@@ -157,14 +157,15 @@ help() {
 	read -r -d '' help << EOM
 Usage: $0 [-adhrspvzZ] imagefile.img [newimagefile.img]
 
-  -s         Don't expand filesystem when image is booted the first time
-  -v         Be verbose
-  -r         Use advanced filesystem repair option if the normal one fails
-  -z         Compress image after shrinking with gzip
-  -Z         Compress image after shrinking with xz
-  -a         Compress image in parallel using multiple cores
-  -p         Remove logs, apt archives, dhcp leases and ssh hostkeys
-  -d         Write debug messages in a debug log file
+  -s          Don't expand filesystem when image is booted the first time
+  -v          Be verbose
+  -r          Use advanced filesystem repair option if the normal one fails
+  -z          Compress image after shrinking with gzip
+  -Z          Compress image after shrinking with xz
+  -a          Compress image in parallel using multiple cores
+  -p          Remove logs, apt archives, dhcp leases and ssh hostkeys
+  -d          Write debug messages in a debug log file
+  -n HOSTNAME Change hostname
 EOM
 	echo "$help"
 	exit 1
@@ -177,8 +178,9 @@ parallel=false
 verbose=false
 prep=false
 ziptool=""
+wp_hostname=""
 
-while getopts ":adhprsvzZ" opt; do
+while getopts ":adhprsvzZn:" opt; do
   case "${opt}" in
     a) parallel=true;;
     d) debug=true;;
@@ -189,6 +191,7 @@ while getopts ":adhprsvzZ" opt; do
     v) verbose=true;;
     z) ziptool="gzip";;
     Z) ziptool="xz";;
+    n) wp_hostname=${OPTARG};;
     *) help;;
   esac
 done
@@ -308,10 +311,22 @@ if [[ $prep == true ]]; then
   info "Syspreping: Removing logs, apt archives, dhcp leases and ssh hostkeys"
   mountdir=$(mktemp -d)
   mount "$loopback" "$mountdir"
-  rm -rf "$mountdir/var/cache/apt/archives/*" "$mountdir/var/lib/dhcpcd5/*" "$mountdir/var/log/*" "$mountdir/var/tmp/*" "$mountdir/tmp/*" "$mountdir/etc/ssh/*_host_*"
+  rm -rf "$mountdir/var/cache/apt/archives/*" "$mountdir/var/lib/dhcpcd5/*" "$mountdir/var/tmp/*" "$mountdir/tmp/*" "$mountdir/etc/ssh/*_host_*"
+  rm -rf "$mountdir/home/pi/dev" "$mountdir/home/pi/experimental" "$mountdir/home/pi/backup/*" "$mountdir/home/pi/.bash_history" "$mountdir/home/pi/.python_history"  "$mountdir/etc/sniffer/whitelist_cache.txt"
+  find "$mountdir/var/log" -type f -exec rm -f {} \;
   umount "$mountdir"
 fi
 
+# Change hostname
+if [[ -n $wp_hostname ]]; then
+    mountdir=$(mktemp -d)
+    mount "$loopback" "$mountdir"
+    current_hostname=`cat $mountdir/etc/hostname`
+    info "Changing hostname from $current_hostname to $wp_hostname"
+    echo $wp_hostname > "$mountdir/etc/hostname"
+    sed -i "s/127.0.1.1.*$current_hostname/127.0.1.1\t$wp_hostname/g" "$mountdir/etc/hosts"
+    umount "$mountdir"
+fi
 
 #Make sure filesystem is ok
 checkFilesystem
